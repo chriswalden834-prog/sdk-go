@@ -97,6 +97,7 @@ Flags:
 -t	Optional. Default is q. Subscription type. Values include:
 		o OHLC
 		q Quotes (includes trades)
+-service Optional. Default is REAL_TIME.  Values include REAL_TIME|DELAYED		   
 -li  Optional. Log Instruments
 -ls  Optional. Log Snapshots
 -lu  Optional. Log Market Updates
@@ -114,7 +115,8 @@ func main() {
 	lu := flag.Bool("lu", false, "Log Market Updates")
 	lo := flag.Bool("lo", false, "Log OHLC")
 	exchange := flag.Bool("e", false, "Exchanges mode.")
-	subscriptions := flag.String("t", "q", "Quotes.")
+	subscriptions := flag.String("t", "q", "Type: q = Quotes, o = OHLC")
+	service := flag.String("service", "REAL_TIME", "REAL_TIME | DELAYED")
 	mode := flag.String("m", "quotes", "Mode: [quotes | def]")
 
 	flag.Parse()
@@ -139,7 +141,7 @@ func main() {
 		for {
 			log.Printf("Stats: Total: %d, hb: %d id: %d, ms: %d, mu: %d, ohlc: %d, sr: %d, unk: %d", (messageHandler.Stats().HeartBeat + messageHandler.Stats().InstrumentDefinition + messageHandler.Stats().MarketSnapshot + messageHandler.Stats().MarketUpdate + messageHandler.Stats().OHLC + messageHandler.Stats().SubscriptionResponse + messageHandler.Stats().Unknown),
 				messageHandler.Stats().HeartBeat, messageHandler.Stats().InstrumentDefinition, messageHandler.Stats().MarketSnapshot, messageHandler.Stats().MarketUpdate, messageHandler.Stats().OHLC, messageHandler.Stats().SubscriptionResponse, messageHandler.Stats().Unknown)
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 		}
 	}()
 
@@ -216,18 +218,26 @@ func main() {
 
 		wg.Wait()
 	case "quotes":
+		// Create Subscription Parameters
+		var subRequest = openfeed.SubRequest{}
+		subRequest.Service = *service
+
 		if *exchange {
-			conn.AddExchangeSubscription(strings.Split(flag.Arg(0), ","), &hnd)
+			subRequest.Exchanges = strings.Split(flag.Arg(0), ",")
+			conn.AddExchangeSubscription(subRequest.Exchanges, &hnd, &subRequest)
 		} else {
+			// symbol subscriptions
 			for _, c := range *subscriptions {
 				s := strings.ToUpper(string(c))
 				switch s {
 				case "O":
-					// log.Printf("Adding OHLC Request")
-					conn.AddSymbolOHLCSubscription(strings.Split(flag.Arg(0), ","), &hnd)
+					subRequest.Symbols = strings.Split(flag.Arg(0), ",")
+					log.Printf("Adding OHLC Request service: %s symbols: %s", subRequest.Service, subRequest.Symbols)
+					conn.AddSymbolOHLCSubscription(subRequest.Symbols, &hnd, &subRequest)
 				case "Q":
-					// log.Printf("Adding SUBSCRIPTION Request")
-					conn.AddSymbolSubscription(strings.Split(flag.Arg(0), ","), &hnd)
+					subRequest.Symbols = strings.Split(flag.Arg(0), ",")
+					log.Printf("Adding SUBSCRIPTION Request, service: %s symbols: %s", *service, flag.Args())
+					conn.AddSymbolSubscription(subRequest.Symbols, &hnd, &subRequest)
 				default:
 					log.Printf("Unknown subscription %s", s)
 					log.Fatalf(usage)
